@@ -1,0 +1,87 @@
+Add an av1_v4l2m2m decoder for stateful V4L2 AV1 decoders.
+
+Linux 7.0 added V4L2_PIX_FMT_AV1 ('AV01', one temporal unit per buffer) for
+stateful decoders, and the Qualcomm iris driver exposes it on SM8550, SM8650
+and SM8750. FFmpeg's generic V4L2 M2M wrapper handles it without
+codec-specific code, so this only registers the codec and maps the fourcc.
+The fourcc is defined locally because older kernel headers lack it.
+
+Applies to cgutman/FFmpeg f116128cafb244bc0f809d0285932ced0471268d.
+
+diff --git a/configure b/configure
+index 559e543..a663750 100755
+--- a/configure
++++ b/configure
+@@ -3573,6 +3573,7 @@ av1_cuvid_decoder_deps="cuvid CUVIDAV1PICPARAMS"
+ av1_d3d12va_encoder_deps="d3d12va d3d12va_av1_headers"
+ av1_d3d12va_encoder_select="cbs_av1 d3d12va_encode"
+ av1_mediacodec_decoder_deps="mediacodec"
++av1_v4l2m2m_decoder_deps="v4l2_m2m av1_v4l2_m2m"
+ av1_mediacodec_encoder_deps="mediacodec"
+ av1_mediacodec_encoder_select="extract_extradata_bsf"
+ av1_mf_encoder_deps="mediafoundation"
+@@ -7605,6 +7606,7 @@ if enabled v4l2_m2m; then
+     check_cc h264_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_H264;"
+     check_cc vp8_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP8;"
+     check_cc vp9_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP9;"
++    check_cc av1_v4l2_m2m linux/videodev2.h "int i = v4l2_fourcc('A', 'V', '0', '1');"
+ fi
+ 
+ if enabled v4l2_request; then
+diff --git a/libavcodec/Makefile b/libavcodec/Makefile
+index 1ca5ca7..0926acf 100644
+--- a/libavcodec/Makefile
++++ b/libavcodec/Makefile
+@@ -277,6 +277,7 @@ OBJS-$(CONFIG_AV1_DECODER)             += av1dec.o av1_parse.o
+ OBJS-$(CONFIG_AV1_CUVID_DECODER)       += cuviddec.o
+ OBJS-$(CONFIG_AV1_D3D12VA_ENCODER)     += d3d12va_encode_av1.o av1_levels.o
+ OBJS-$(CONFIG_AV1_MEDIACODEC_DECODER)  += mediacodecdec.o
++OBJS-$(CONFIG_AV1_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
+ OBJS-$(CONFIG_AV1_MEDIACODEC_ENCODER)  += mediacodecenc.o
+ OBJS-$(CONFIG_AV1_NVENC_ENCODER)       += nvenc_av1.o nvenc.o
+ OBJS-$(CONFIG_AV1_QSV_ENCODER)         += qsvenc_av1.o
+diff --git a/libavcodec/allcodecs.c b/libavcodec/allcodecs.c
+index 695214f..028a9cc 100644
+--- a/libavcodec/allcodecs.c
++++ b/libavcodec/allcodecs.c
+@@ -864,6 +864,7 @@ extern const FFCodec ff_av1_decoder;
+ extern const FFCodec ff_av1_cuvid_decoder;
+ extern const FFCodec ff_av1_d3d12va_encoder;
+ extern const FFCodec ff_av1_mediacodec_decoder;
++extern const FFCodec ff_av1_v4l2m2m_decoder;
+ extern const FFCodec ff_av1_mediacodec_encoder;
+ extern const FFCodec ff_av1_nvenc_encoder;
+ extern const FFCodec ff_av1_qsv_decoder;
+diff --git a/libavcodec/v4l2_fmt.c b/libavcodec/v4l2_fmt.c
+index 6df47e3..901abdd 100644
+--- a/libavcodec/v4l2_fmt.c
++++ b/libavcodec/v4l2_fmt.c
+@@ -26,6 +26,11 @@
+ #include "v4l2_fmt.h"
+ 
+ #define V4L2_FMT(x) V4L2_PIX_FMT_##x
++
++/* Stateful AV1 bitstream (one temporal unit per buffer), added in Linux 7.0 */
++#ifndef V4L2_PIX_FMT_AV1
++#define V4L2_PIX_FMT_AV1 v4l2_fourcc('A', 'V', '0', '1')
++#endif
+ #define AV_CODEC(x) AV_CODEC_ID_##x
+ #define AV_FMT(x)   AV_PIX_FMT_##x
+ 
+@@ -107,6 +112,7 @@ static const struct fmt_conversion {
+ #ifdef V4L2_PIX_FMT_VC1_ANNEX_G
+     { AV_FMT(NONE),        AV_CODEC(VC1),         V4L2_FMT(VC1_ANNEX_G) },
+ #endif
++    { AV_FMT(NONE),        AV_CODEC(AV1),         V4L2_FMT(AV1) },
+ };
+ 
+ uint32_t ff_v4l2_format_avcodec_to_v4l2(enum AVCodecID avcodec)
+diff --git a/libavcodec/v4l2_m2m_dec.c b/libavcodec/v4l2_m2m_dec.c
+index 9667bfe..1ef7113 100644
+--- a/libavcodec/v4l2_m2m_dec.c
++++ b/libavcodec/v4l2_m2m_dec.c
+@@ -352,3 +352,4 @@ M2MDEC(h263,  "H.263", AV_CODEC_ID_H263,       NULL);
+ M2MDEC(vc1 ,  "VC1",   AV_CODEC_ID_VC1,        NULL);
+ M2MDEC(vp8,   "VP8",   AV_CODEC_ID_VP8,        NULL);
+ M2MDEC(vp9,   "VP9",   AV_CODEC_ID_VP9,        NULL);
++M2MDEC(av1,   "AV1",   AV_CODEC_ID_AV1,        NULL);
