@@ -1927,6 +1927,49 @@ Flickable {
                     }
                 }
 
+                Label {
+                    width: parent.width
+                    id: uiScaleTitle
+                    text: qsTr("Interface scale")
+                    font.pointSize: 12
+                    wrapMode: Text.Wrap
+                }
+
+                AutoResizingComboBox {
+                    id: uiScaleComboBox
+                    textRole: "text"
+                    model: ListModel {
+                        id: uiScaleListModel
+                        ListElement { text: qsTr("Automatic"); val: 0 }
+                        ListElement { text: "100%"; val: 100 }
+                        ListElement { text: "125%"; val: 125 }
+                        ListElement { text: "150%"; val: 150 }
+                        ListElement { text: "175%"; val: 175 }
+                        ListElement { text: "200%"; val: 200 }
+                        ListElement { text: "250%"; val: 250 }
+                        ListElement { text: "300%"; val: 300 }
+                    }
+
+                    Component.onCompleted: {
+                        currentIndex = 0
+                        for (var i = 0; i < uiScaleListModel.count; i++) {
+                            if (uiScaleListModel.get(i).val === StreamingPreferences.uiScale) {
+                                currentIndex = i
+                                break
+                            }
+                        }
+                    }
+
+                    // ::onActivated must be used, as it only listens for when the index is changed by a human
+                    onActivated : {
+                        var newScale = uiScaleListModel.get(currentIndex).val
+                        if (StreamingPreferences.uiScale !== newScale) {
+                            StreamingPreferences.uiScale = newScale
+                            ToolTip.show(qsTr("You must restart Moonlight for this change to take effect"), 5000)
+                        }
+                    }
+                }
+
                 CheckBox {
                     id: connectionWarningsCheck
                     width: parent.width

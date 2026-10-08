@@ -10,6 +10,7 @@
 #include "video/decoder.h"
 #include "audio/renderers/renderer.h"
 #include "video/overlaymanager.h"
+#include "streammenu.h"
 #include "diagnostics/diagnosticcapture.h"
 
 class SupportedVideoFormatList : public QList<int>
@@ -99,6 +100,7 @@ class Session : public QObject
     Q_OBJECT
 
     friend class SdlInputHandler;
+    friend class StreamMenu;
     friend class DeferredSessionCleanupTask;
     friend class AsyncConnectionStartThread;
 
@@ -139,6 +141,12 @@ public:
     void flushWindowEvents();
 
     void setShouldExit(bool quitHostApp = false);
+
+    // Quits the running game on the host when this session ends, regardless
+    // of the quit-app-after-stream preference
+    void requestQuitHostApp();
+
+    void openStreamMenu();
 
 signals:
     void stageStarting(QString stage);
@@ -319,6 +327,8 @@ private:
     Uint32 m_DropAudioEndTime;
 
     Overlay::OverlayManager m_OverlayManager;
+    StreamMenu m_StreamMenu{this};
+    bool m_QuitHostAppRequested = false;
 
     static CONNECTION_LISTENER_CALLBACKS k_ConnCallbacks;
     static Session* s_ActiveSession;

@@ -806,6 +806,15 @@ int main(int argc, char *argv[])
         SDL_SetHint("SDL_VIDEO_WAYLAND_MODE_SCALING", "aspect");
     }
 
+    // Apply the interface scale chosen in Settings. Handheld screens are
+    // small and dense but compositors like gamescope don't scale clients.
+    if (!qEnvironmentVariableIsSet("QT_SCALE_FACTOR")) {
+        int uiScale = StreamingPreferences::readUiScale();
+        if (uiScale >= 50 && uiScale <= 400 && uiScale != 100) {
+            qputenv("QT_SCALE_FACTOR", QByteArray::number(uiScale / 100.0));
+        }
+    }
+
     QGuiApplication app(argc, argv);
 
 #ifdef Q_OS_DARWIN

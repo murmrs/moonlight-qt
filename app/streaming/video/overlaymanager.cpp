@@ -14,6 +14,10 @@ OverlayManager::OverlayManager() :
     m_Overlays[OverlayType::OverlayStatusUpdate].color = {0xCC, 0x00, 0x00, 0xFF};
     m_Overlays[OverlayType::OverlayStatusUpdate].fontSize = 36;
 
+    // The menu font is sized from the window height by showMenu()
+    m_Overlays[OverlayType::OverlayMenu].color = {0xF0, 0xF0, 0xF0, 0xFF};
+    m_Overlays[OverlayType::OverlayMenu].fontSize = 48;
+
     // While TTF will usually not be initialized here, it is valid for that not to
     // be the case, since Session destruction is deferred and could overlap with
     // the lifetime of a new Session object.
@@ -171,8 +175,10 @@ void OverlayManager::run()
         OverlayType type;
         char text[1024];
         bool enabled;
+        int fontSize;
         uint64_t revision;
         Clock::time_point queued;
+        MenuState menu;
         {
             std::unique_lock<std::mutex> lock(m_StateLock);
             m_WorkReady.wait(lock, [&] {
@@ -190,20 +196,32 @@ void OverlayManager::run()
             auto& overlay = m_Overlays[type];
             overlay.dirty = false;
             enabled = overlay.enabled;
+            fontSize = overlay.fontSize;
             revision = overlay.revision;
             queued = overlay.queued;
             SDL_memcpy(text, overlay.text, sizeof(text));
+            if (type == OverlayMenu) menu = m_Menu;
         }
         const auto started = Clock::now();
         auto& overlay = m_Overlays[type];
         SDL_Surface* surface = nullptr;
+        MenuLayout menuLayout;
         if (enabled && text[0]) {
+            if (overlay.font && overlay.loadedFontSize != fontSize) {
+                TTF_CloseFont(overlay.font);
+                overlay.font = nullptr;
+            }
             if (!overlay.font && !m_FontData.isEmpty()) {
                 overlay.font = TTF_OpenFontRW(SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
-                                              1, overlay.fontSize);
+                                              1, fontSize);
+                overlay.loadedFontSize = fontSize;
             }
-            if (overlay.font) surface = RenderTextOutlinedWrapped(overlay.font, text, overlay.color,
-                                                                  {0, 0, 0, 255}, 4, 1024);
+            if (overlay.font) {
+                surface = type == OverlayMenu ?
+                            renderMenu(overlay.font, menu, menuLayout) :
+                            RenderTextOutlinedWrapped(overlay.font, text, overlay.color,
+                                                      {0, 0, 0, 255}, 4, 1024);
+            }
             if (!surface) continue; // Keep the last successful overlay on failure.
         }
         const auto rasterized = Clock::now();
@@ -213,6 +231,7 @@ void OverlayManager::run()
             std::lock_guard<std::mutex> stateLock(m_StateLock);
             publish = !m_Stopping && m_Renderer && overlay.revision == revision;
             if (publish) surface = (SDL_Surface*)SDL_AtomicSetPtr((void**)&overlay.surface, surface);
+            if (publish && type == OverlayMenu) m_MenuLayout = menuLayout;
         }
         SDL_FreeSurface(surface); // Superseded result or previous unconsumed surface.
         if (publish) {
@@ -222,6 +241,104 @@ void OverlayManager::run()
                                             ns(rasterized - started), ns(Clock::now() - dispatch)});
         }
     }
+}
+
+void OverlayManager::showMenu(const std::string& title, const std::vector<std::string>& items,
+                              int selected, int fontSize)
+{
+    {
+        std::lock_guard<std::mutex> lock(m_StateLock);
+        m_Menu.title = title;
+        m_Menu.items = items;
+        m_Menu.selected = selected;
+
+        // Plain-text form for renderers that draw overlay text themselves
+        std::string plain = title;
+        for (size_t i = 0; i < items.size(); i++) {
+            plain += ((int)i == selected ? "\n> " : "\n  ") + items[i];
+        }
+
+        auto& overlay = m_Overlays[OverlayMenu];
+        SDL_utf8strlcpy(overlay.text, plain.c_str(), sizeof(overlay.text));
+        overlay.fontSize = fontSize;
+        overlay.enabled = true;
+        ++overlay.revision;
+        overlay.dirty = true;
+        overlay.queued = std::chrono::steady_clock::now();
+    }
+    m_WorkReady.notify_one();
+}
+
+void OverlayManager::hideMenu()
+{
+    {
+        std::lock_guard<std::mutex> lock(m_StateLock);
+        m_MenuLayout = {};
+    }
+    setOverlayState(OverlayMenu, false);
+}
+
+bool OverlayManager::getMenuLayout(MenuLayout& layout)
+{
+    std::lock_guard<std::mutex> lock(m_StateLock);
+    layout = m_MenuLayout;
+    return m_Overlays[OverlayMenu].enabled && layout.itemCount > 0;
+}
+
+SDL_Surface* OverlayManager::renderMenu(TTF_Font* font, const MenuState& menu, MenuLayout& layout)
+{
+    const int lineHeight = TTF_FontHeight(font);
+    const int padX = lineHeight;
+    const int padY = lineHeight / 2;
+    const int rowHeight = lineHeight + lineHeight / 2;
+
+    // Size the panel to the widest line
+    int contentWidth = 0;
+    int w, h;
+    if (TTF_SizeUTF8(font, menu.title.c_str(), &w, &h) == 0) contentWidth = w;
+    for (const auto& item : menu.items) {
+        if (TTF_SizeUTF8(font, item.c_str(), &w, &h) == 0) contentWidth = SDL_max(contentWidth, w);
+    }
+
+    layout.width = contentWidth + 2 * padX;
+    layout.itemsTop = padY + lineHeight + padY;
+    layout.rowHeight = rowHeight;
+    layout.itemCount = (int)menu.items.size();
+    layout.height = layout.itemsTop + layout.itemCount * rowHeight + padY;
+
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, layout.width, layout.height, 32,
+                                                          SDL_PIXELFORMAT_ARGB8888);
+    if (surface == nullptr) {
+        return nullptr;
+    }
+
+    SDL_FillRect(surface, nullptr, SDL_MapRGBA(surface->format, 0x10, 0x10, 0x14, 0xE0));
+
+    auto drawText = [&](const std::string& text, SDL_Color color, int x, int y) {
+        SDL_Surface* textSurface = TTF_RenderUTF8_Blended(font, text.c_str(), color);
+        if (textSurface != nullptr) {
+            SDL_Rect dst = { x, y, textSurface->w, textSurface->h };
+            SDL_SetSurfaceBlendMode(textSurface, SDL_BLENDMODE_BLEND);
+            SDL_BlitSurface(textSurface, nullptr, surface, &dst);
+            SDL_FreeSurface(textSurface);
+        }
+    };
+
+    drawText(menu.title, {0xA0, 0xA0, 0xA8, 0xFF}, padX, padY);
+
+    SDL_Rect divider = { padX / 2, layout.itemsTop - padY / 2, layout.width - padX, SDL_max(2, lineHeight / 16) };
+    SDL_FillRect(surface, &divider, SDL_MapRGBA(surface->format, 0x50, 0x50, 0x58, 0xFF));
+
+    for (int i = 0; i < layout.itemCount; i++) {
+        int rowTop = layout.itemsTop + i * rowHeight;
+        if (i == menu.selected) {
+            SDL_Rect highlight = { padX / 2, rowTop, layout.width - padX, rowHeight };
+            SDL_FillRect(surface, &highlight, SDL_MapRGBA(surface->format, 0x2A, 0x5D, 0xB0, 0xFF));
+        }
+        drawText(menu.items[i], m_Overlays[OverlayMenu].color, padX, rowTop + (rowHeight - lineHeight) / 2);
+    }
+
+    return surface;
 }
 
 SDL_Surface* OverlayManager::RenderTextOutlinedWrapped(TTF_Font* font, const char* text, SDL_Color textColor, SDL_Color outlineColor, int outlineWidth, int wrapWidth) {

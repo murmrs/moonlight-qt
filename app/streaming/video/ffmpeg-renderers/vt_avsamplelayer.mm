@@ -416,6 +416,11 @@ public:
             case Overlay::OverlayStatusUpdate:
                 [m_OverlayTextFields[type] setAlignment:NSTextAlignmentRight];
                 break;
+            case Overlay::OverlayMenu:
+                [m_OverlayTextFields[type] setAlignment:NSTextAlignmentCenter];
+                [m_OverlayTextFields[type] setDrawsBackground:YES];
+                [m_OverlayTextFields[type] setBackgroundColor:[NSColor colorWithWhite:0.06 alpha:0.88]];
+                break;
             default:
                 break;
             }

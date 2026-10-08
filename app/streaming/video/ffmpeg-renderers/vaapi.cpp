@@ -758,8 +758,8 @@ void VAAPIRenderer::notifyOverlayUpdated(Overlay::OverlayType type)
             overlayRect.x = 0;
             overlayRect.y = -newSurface->h;
         }
-        else if (type == Overlay::OverlayDebug) {
-            // Top left
+        else {
+            // Top left (the menu is centered at render time)
             overlayRect.x = 0;
             overlayRect.y = 0;
         }
@@ -847,6 +847,11 @@ VAAPIRenderer::renderFrame(AVFrame* frame)
             }
 
             SDL_Rect overlayRect = m_OverlayRect[type];
+
+            if (type == Overlay::OverlayMenu) {
+                overlayRect.x = SDL_max(0, (windowWidth - overlayRect.w) / 2);
+                overlayRect.y = SDL_max(0, (windowHeight - overlayRect.h) / 2);
+            }
 
             // Negative values are relative to the other side of the window
             if (overlayRect.x < 0) {

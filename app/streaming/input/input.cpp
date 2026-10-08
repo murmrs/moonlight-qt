@@ -279,6 +279,42 @@ void SdlInputHandler::raiseAllKeys()
     m_KeysDown.clear();
 }
 
+void SdlInputHandler::releaseAllInput()
+{
+    raiseAllKeys();
+
+    // Native touch passthrough tracks contacts on the host
+    if (LiGetHostFeatureFlags() & LI_FF_PEN_TOUCH_EVENTS) {
+        LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+    }
+
+    // Touch emulation drives mouse buttons from timers and finger state
+    SDL_RemoveTimer(m_LongPressTimer);
+    m_LongPressTimer = 0;
+    SDL_RemoveTimer(m_DragTimer);
+    m_DragTimer = 0;
+    m_DragButton = 0;
+    SDL_zeroa(m_TouchDownEvent);
+    m_NumFingersDown = 0;
+
+    for (char button : { BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT, BUTTON_X1, BUTTON_X2 }) {
+        LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, button);
+    }
+
+    // Neutralize gamepads so held buttons and sticks don't keep acting
+    for (int i = 0; i < MAX_GAMEPADS; i++) {
+        GamepadState* state = &m_GamepadState[i];
+        if (state->controller == nullptr) {
+            continue;
+        }
+
+        state->buttons = 0;
+        state->lsX = state->lsY = state->rsX = state->rsY = 0;
+        state->lt = state->rt = 0;
+        LiSendMultiControllerEvent(state->index, m_GamepadMask, 0, 0, 0, 0, 0, 0, 0);
+    }
+}
+
 void SdlInputHandler::notifyMouseLeave()
 {
     // SDL on Windows doesn't send the mouse button up until the mouse re-enters the window

@@ -113,6 +113,11 @@ public:
 
     void raiseAllKeys();
 
+    // Releases every key, button, touch and gamepad input the host may see as
+    // held, and resets touch gesture state. Used when the stream menu takes
+    // over input.
+    void releaseAllInput();
+
     void notifyMouseLeave();
 
     void notifyFocusLost();

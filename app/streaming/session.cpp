@@ -1474,7 +1474,7 @@ private:
         // Only quit the running app if our session terminated gracefully
         bool shouldQuit =
                 !m_Session->m_UnexpectedTermination &&
-                m_Session->m_Preferences->quitAppAfter;
+                (m_Session->m_Preferences->quitAppAfter || m_Session->m_QuitHostAppRequested);
 
         // Notify the UI
         if (shouldQuit) {
@@ -1977,6 +1977,16 @@ void Session::setShouldExit(bool quitHostApp)
     m_ShouldExit = true;
 }
 
+void Session::requestQuitHostApp()
+{
+    m_QuitHostAppRequested = true;
+}
+
+void Session::openStreamMenu()
+{
+    m_StreamMenu.open();
+}
+
 void Session::start()
 {
     // Wait for any old session to finish cleanup
@@ -2268,6 +2278,12 @@ void Session::exec()
             continue;
         }
 #endif
+        // The stream menu takes input while open and watches touches for
+        // its open gesture
+        if (m_StreamMenu.handleEvent(event)) {
+            continue;
+        }
+
         switch (event.type) {
         case SDL_QUIT:
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

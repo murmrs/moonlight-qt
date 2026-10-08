@@ -22,6 +22,10 @@ public:
 
     Q_INVOKABLE void save();
 
+    // Reads the saved interface scale before any QGuiApplication exists,
+    // since Qt only honors QT_SCALE_FACTOR at startup
+    static int readUiScale();
+
     void reload();
 
     enum AudioConfig
@@ -165,6 +169,7 @@ public:
     Q_PROPERTY(bool connectionWarnings MEMBER connectionWarnings NOTIFY connectionWarningsChanged)
     Q_PROPERTY(bool configurationWarnings MEMBER configurationWarnings NOTIFY configurationWarningsChanged)
     Q_PROPERTY(bool richPresence MEMBER richPresence NOTIFY richPresenceChanged)
+    Q_PROPERTY(int uiScale MEMBER uiScale NOTIFY uiScaleChanged)
     Q_PROPERTY(bool gamepadMouse MEMBER gamepadMouse NOTIFY gamepadMouseChanged)
     Q_PROPERTY(bool detectNetworkBlocking MEMBER detectNetworkBlocking NOTIFY detectNetworkBlockingChanged)
     Q_PROPERTY(bool showPerformanceOverlay MEMBER showPerformanceOverlay NOTIFY showPerformanceOverlayChanged)
@@ -221,6 +226,7 @@ public:
     bool connectionWarnings;
     bool configurationWarnings;
     bool richPresence;
+    int uiScale; // Percent; 0 leaves Qt's automatic scaling alone
     bool gamepadMouse;
     bool detectNetworkBlocking;
     bool showPerformanceOverlay;
@@ -273,6 +279,7 @@ signals:
     void connectionWarningsChanged();
     void configurationWarningsChanged();
     void richPresenceChanged();
+    void uiScaleChanged();
     void gamepadMouseChanged();
     void detectNetworkBlockingChanged();
     void showPerformanceOverlayChanged();

@@ -365,20 +365,14 @@ void SdlInputHandler::handleControllerButtonEvent(SDL_ControllerButtonEvent* eve
         }
     }
 
-    // Handle Start+Select+L1+R1 as a gamepad quit combo
+    // Handle Start+Select+L1+R1 as the stream menu combo. The menu offers
+    // disconnect and exit, so this replaces the immediate quit.
     if (state->buttons == (PLAY_FLAG | BACK_FLAG | LB_FLAG | RB_FLAG) && qgetenv("NO_GAMEPAD_QUIT") != "1") {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Detected quit gamepad button combo");
+                    "Detected stream menu gamepad button combo");
 
-        // Push a quit event to the main loop
-        SDL_Event event;
-        event.type = SDL_QUIT;
-        event.quit.timestamp = SDL_GetTicks();
-        SDL_PushEvent(&event);
-
-        // Clear buttons down on this gamepad
-        LiSendMultiControllerEvent(state->index, m_GamepadMask,
-                                   0, 0, 0, 0, 0, 0, 0);
+        // Clears buttons down on this gamepad along with all other input
+        Session::get()->openStreamMenu();
         return;
     }
 

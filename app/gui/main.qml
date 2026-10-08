@@ -443,6 +443,24 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Settings") + (settingsShortcut.nativeText ? (" ("+settingsShortcut.nativeText+")") : "")
             }
+
+            // Handhelds and full-screen sessions have no window close button
+            NavigableToolButton {
+                id: exitButton
+
+                iconSource: "qrc:/res/power.svg"
+
+                onClicked: quitConfirmationDialog.open()
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Exit Moonlight")
+            }
         }
     }
 

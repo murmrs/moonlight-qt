@@ -668,6 +668,11 @@ void DXVA2Renderer::notifyOverlayUpdated(Overlay::OverlayType type)
         renderRect.x = 0;
         renderRect.y = 0;
     }
+    else if (type == Overlay::OverlayMenu) {
+        // Centered
+        renderRect.x = (m_DisplayWidth - newSurface->w) / 2.0f;
+        renderRect.y = (m_DisplayHeight - newSurface->h) / 2.0f;
+    }
 
     renderRect.w = newSurface->w;
     renderRect.h = newSurface->h;
