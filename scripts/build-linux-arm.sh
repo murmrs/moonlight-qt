@@ -412,6 +412,20 @@ PY
 
     flatpak remote-add --user --if-not-exists flathub "$FLATHUB_REPO"
 
+    # Install the SDK and runtime without related extensions. Extensions such
+    # as GL drivers and codecs-extra aren't needed to build, and some versions
+    # fail to mount over the read-only SDK inside the build sandbox.
+    local runtime_version
+    runtime_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime-version"])' "$manifest")"
+    flatpak install --user -y --noninteractive --no-related --arch="$ARCH" flathub \
+        "org.kde.Sdk//$runtime_version" "org.kde.Platform//$runtime_version"
+    for ext in org.freedesktop.Platform.GL.default org.freedesktop.Platform.codecs-extra; do
+        if flatpak list --user --runtime --columns=application | grep -qx "$ext"; then
+            flatpak uninstall --user -y --noninteractive --all-arches "$ext" >/dev/null 2>&1 ||
+                flatpak uninstall --user -y --noninteractive $(flatpak list --user --runtime --columns=ref | grep "^$ext/") || true
+        fi
+    done
+
     local builder=(flatpak-builder)
     if ! command -v flatpak-builder >/dev/null 2>&1; then
         flatpak install --user -y flathub org.flatpak.Builder
@@ -424,9 +438,13 @@ PY
         wrap=(dbus-run-session --)
     fi
 
+    # Compiling needs no GL drivers, and some GL extension builds fail to
+    # mount over the read-only SDK in the build sandbox
+    export FLATPAK_GL_DRIVERS=none
+
     log "Building Flatpak for $ARCH (dependencies compile from source; this takes a while)"
     "${wrap[@]}" "${builder[@]}" --user --arch="$ARCH" --force-clean --sandbox \
-        --install-deps-from=flathub --ccache --jobs="$JOBS" \
+        --ccache --jobs="$JOBS" \
         --state-dir="$fp_state" --repo="$fp_repo" \
         "$fp_build" "$manifest"
 
